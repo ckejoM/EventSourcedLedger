@@ -1,6 +1,10 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="Marten" Version="8.35.0" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\EventSourcedLedger.Core\EventSourcedLedger.Core.csproj" />
   </ItemGroup>
 
