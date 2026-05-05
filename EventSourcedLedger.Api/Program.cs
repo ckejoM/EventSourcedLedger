@@ -1,9 +1,13 @@
 using JasperFx;
 using Marten;
+using Wolverine;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+
+// Wolverine takes over handler routing
+builder.Host.UseWolverine();
 
 builder.Services.AddMarten(opts =>
 {
