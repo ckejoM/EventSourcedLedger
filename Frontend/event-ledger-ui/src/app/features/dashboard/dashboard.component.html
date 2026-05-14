@@ -1,1 +1,31 @@
-<p>dashboard works!</p>
+<div class="container" style="padding: 2rem; font-family: sans-serif;">
+  <h1>Event-Sourced Ledger</h1>
+  <hr />
+
+  <!-- Step 1: Open Account if none exists -->
+  <div *ngIf="!accountId" class="setup-card">
+    <h3>Welcome. Please open a new ledger.</h3>
+    <input #ownerName type="text" placeholder="Your Name" />
+    <button (click)="createNewAccount(ownerName.value)">Initialize Ledger</button>
+  </div>
+
+  <!-- Step 2: Dashboard View -->
+  <div *ngIf="dashboard" class="dashboard-grid">
+    <div class="card balance-card">
+      <h2>Current Balance</h2>
+      <p style="font-size: 3rem; font-weight: bold; color: #2e7d32;">
+        {{ dashboard.currentBalance | currency }}
+      </p>
+      <small>Total Transactions: {{ dashboard.totalTransactions }}</small>
+    </div>
+
+    <div class="card action-card">
+      <h3>New Deposit (Command)</h3>
+      <div style="display: flex; flex-direction: column; gap: 10px; max-width: 300px;">
+        <input type="number" [(ngModel)]="depositAmount" placeholder="Amount" />
+        <input type="text" [(ngModel)]="depositReference" placeholder="Reference (e.g. Salary)" />
+        <button (click)="onDeposit()">Dispatch Deposit Command</button>
+      </div>
+    </div>
+  </div>
+</div>
