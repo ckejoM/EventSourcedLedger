@@ -1,4 +1,6 @@
+using EventSourcedLedger.Core.Projections; // Required to find your Projection class
 using JasperFx;
+using JasperFx.Events.Projections;
 using Marten;
 using Wolverine;
 
@@ -18,6 +20,9 @@ builder.Services.AddMarten(opts =>
     {
         opts.AutoCreateSchemaObjects = AutoCreate.All;
     }
+
+    // Register the Projection Engine
+    opts.Projections.Add<AccountDashboardProjection>(ProjectionLifecycle.Inline);
 });
 
 var app = builder.Build();
