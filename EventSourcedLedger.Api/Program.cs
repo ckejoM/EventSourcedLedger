@@ -1,3 +1,4 @@
+using EventSourcedLedger.Api;
 using EventSourcedLedger.Core.Projections; // Required to find your Projection class
 using JasperFx;
 using JasperFx.Events.Projections;
@@ -9,7 +10,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 
 // Wolverine takes over handler routing
-builder.Host.UseWolverine();
+builder.Host.UseWolverine(opts =>
+{
+    opts.Discovery.IncludeAssembly(typeof(EventSourcedLedger.Core.Commands.OpenAccount).Assembly);
+});
 
 builder.Services.AddMarten(opts =>
 {
@@ -33,5 +37,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+
+app.MapLedgerEndpoints();
 
 app.Run();

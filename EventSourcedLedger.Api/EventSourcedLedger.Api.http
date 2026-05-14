@@ -1,6 +1,27 @@
 @EventSourcedLedger.Api_HostAddress = http://localhost:5262
 
-GET {{EventSourcedLedger.Api_HostAddress}}/weatherforecast/
+POST {{EventSourcedLedger.Api_HostAddress}}/api/accounts
+Content-Type: application/json
+Accept: application/json
+{
+  "OpenAccount":"Jovan"
+}
+
+###
+
+POST {{EventSourcedLedger.Api_HostAddress}}/api/accounts/cf7234d9-d8ed-44fa-8513-1d83d7d20f8a/deposit
+Content-Type: application/json
+Accept: application/json
+{
+  "amount": 70,
+  "reference": "002"
+}
+
+###
+
+GET {{EventSourcedLedger.Api_HostAddress}}/api/accounts/cf7234d9-d8ed-44fa-8513-1d83d7d20f8a
+Content-Type: application/json
 Accept: application/json
 
 ###
+
