@@ -1,108 +1,56 @@
-# 🏦 Project 8: Event-Sourced Financial Ledger
+# EventSourcedLedger
 
-> **An enterprise-grade financial ledger demonstrating Event Sourcing and strict Command Query Responsibility Segregation (CQRS).**
+A small financial ledger built with event sourcing and CQRS. It's my way of learning what changes when you store *what happened* instead of *the current state*.
 
-Traditional CRUD applications destroy historical context with every UPDATE or DELETE statement. In domains requiring strict auditability—such as fintech, logistics, and healthcare—losing the sequence of state changes is unacceptable. 
+## Why
+In a normal CRUD app every `UPDATE` overwrites history. Accounting, which is my day job, cares a lot about history. In this project every business action is stored as an immutable event in an append-only stream, and the current balance is derived from those events.
 
-This project solves the "loss of history" problem by implementing **Event Sourcing**. Every business action is persisted as an immutable domain event (a "Fact") within an append-only stream. The current system state is then dynamically calculated by replaying these events through highly optimized read-model projections.
+## How it works
+**Write side (commands)**
+- HTTP POSTs map to plain C# `record` commands, dispatched with **Wolverine**.
+- Handlers turn commands into domain events (e.g. `FundsDeposited`), and **Marten** appends them to a PostgreSQL (JSONB) event stream. State is never updated in place.
 
----
+**Read side (queries)**
+- A Marten **inline projection** updates a flat read model (`AccountDashboardView`) in the same transaction as the event append.
+- The Angular client reads that pre-built view with simple GET requests and never touches the event stream.
 
-## 🏗️ System Architecture
-
-The architecture enforces a strict physical and logical boundary between writes (Commands) and reads (Queries) to optimize for both high-throughput transaction logging and lightning-fast UI data retrieval.
-
-### The Write Model (Commands)
-- **Message Routing:** Incoming HTTP POST requests are mapped to pure C# `record` commands and routed via **Wolverine**, eliminating boilerplate and abstracting the transport layer.
-- **Event Store:** Commands are validated and transformed into immutable Domain Events (e.g., FundsDeposited). **Marten** persists these events to a PostgreSQL JSONB stream. State is never mutated directly.
-
-### The Read Model (Queries)
-- **Projections:** Marten’s Projection Engine continuously listens to the event stream. When a new event is appended, it automatically applies the delta to a flat, relational Read Model (AccountDashboardView).
-- **Data Retrieval:** The Angular client performs simple, sub-millisecond GET requests against the pre-calculated Read Model, entirely bypassing the complex event stream.
-
----
-
-## 🔄 Event Flow & CQRS Topology
-
+```mermaid
 sequenceDiagram
-    autonumber
     actor Client as Angular UI
-    participant API as ASP.NET Minimal API
-    participant Bus as Wolverine (Command Bus)
-    participant ES as Marten Event Store (mt_events)
-    participant Proj as Projection Engine (Inline)
-    participant RM as Read Model (mt_doc_accountdashboardview)
-
-    Note over Client, ES: ─── WRITE SIDE (COMMAND) ───
+    participant API as ASP.NET Core Minimal API
+    participant Bus as Wolverine
+    participant ES as Marten event store
+    participant RM as Read model
     Client->>API: POST /api/accounts/{id}/deposit
-    API->>Bus: Dispatch DepositFunds Command
-    Bus->>ES: Start Transaction & Append FundsDeposited Event
-    ES->>ES: Save Immutable Event to JSONB Stream
-    
-    Note over ES, RM: ─── PROJECTION PIPELINE ───
-    ES-->>Proj: Trigger Apply(FundsDeposited)
-    Proj->>RM: Mutate State (Balance = Balance + Amount)
-    RM-->>ES: Commit Database Transaction
-    API-->>Client: 200 OK (Event Accepted)
-
-    Note over Client, RM: ─── READ SIDE (QUERY) ───
+    API->>Bus: DepositFunds command
+    Bus->>ES: Append FundsDeposited
+    ES->>RM: Inline projection updates balance
+    API-->>Client: 200 OK
     Client->>API: GET /api/accounts/{id}
-    API->>RM: IQuerySession.LoadAsync(id)
-    RM-->>API: Return flat AccountDashboardView
-    API-->>Client: 200 OK (Current Balance Displayed)
+    API->>RM: Load AccountDashboardView
+    API-->>Client: Current balance
+```
+
+## Stack
+.NET 9 · ASP.NET Core Minimal APIs · Wolverine · Marten · PostgreSQL 16 (Docker) · Angular 18 (standalone)
+
+## Decisions
+1. **Marten instead of EventStoreDB or Kafka.** I already run PostgreSQL. Marten gives me an event store and projections on top of it without another piece of infrastructure.
+2. **Wolverine instead of MediatR.** Handlers can be plain functions with less ceremony, and Wolverine has an outbox if I need one later.
+3. **Inline projections for now.** The read model updates in the same transaction, so reads are immediately consistent. If write volume grows, Marten can switch to async projections (eventual consistency) with a config change.
+
+## Run it locally
+Prerequisites: .NET 9 SDK, Node.js + Angular CLI, Docker.
+1. Start PostgreSQL: `docker-compose up -d`
+2. Run the API: `cd EventSourcedLedger.Api && dotnet run`
+3. Run the client: `cd Frontend/event-ledger-ui && npm install && ng serve`
+4. Open `http://localhost:4200`.
+
+## What's next
+- More account events (withdrawals, transfers between accounts) and the business rules around them
+- Rebuilding a projection from scratch to show replay
+- Tests for the aggregate and the projection
 
 ---
 
-## 🛠️ Technology Stack
-
-| Concern | Technology | Purpose |
-| :--- | :--- | :--- |
-| **Frontend UI** | Angular 17+ (Standalone) | Reactive client-side dashboard consuming optimized read models. |
-| **API Gateway** | ASP.NET Core 9 (Minimal APIs) | Thin routing layer; zero business logic in controllers. |
-| **Command Bus** | Wolverine | In-process mediator for dispatching Commands to Handlers without interface bloat. |
-| **Event Store & Projections** | Marten | Leverages PostgreSQL JSONB to act as a native Event Store and CQRS Projection Engine. |
-| **Infrastructure** | PostgreSQL 16 (Docker) | Containerized relational database powering both the raw event stream and relational read models. |
-
----
-
-## 📐 Architecture Decision Records (ADRs)
-
-### 1. Marten over EventStoreDB or Kafka
-While EventStoreDB and Kafka are industry standards for event streaming, they introduce significant infrastructure overhead and operational complexity. **Marten** was chosen because it provides robust Event Sourcing capabilities directly on top of PostgreSQL, drastically reducing the infrastructure footprint while maintaining enterprise features like optimistic concurrency and inline/async projections.
-
-### 2. Wolverine over MediatR
-MediatR is the traditional choice for .NET CQRS, but it requires heavy boilerplate (e.g., IRequest, constructor injection). **Wolverine** was selected to provide a cleaner, function-based message handling model. It allows handlers to be pure functions and natively supports outbox patterns for future scalability.
-
-### 3. Inline vs. Asynchronous Projections
-For this iteration, **Inline Projections** are utilized. The Read Model updates in the exact same database transaction as the appended event, guaranteeing **Strong Consistency** for the client. As write-throughput scales, this can be toggled to Asynchronous Projections (Eventual Consistency) with a one-line configuration change.
-
----
-
-## 🚀 Getting Started
-
-### Prerequisites
-- .NET 9 SDK
-- Node.js & Angular CLI (npm install -g @angular/cli)
-- Docker Desktop
-
-### Local Development Environment
-
-1. **Spin up the Event Store:**
-
-    docker-compose up -d
-
-2. **Run the Backend API:**
-
-    dotnet run
-
-3. **Run the Angular Client:**
-
-    cd Frontend/event-ledger-ui
-    ng serve
-
-Navigate to http://localhost:4200 to interact with the ledger.
-
----
-*Architected and developed by **Jovan Madzic***  
-**Software Engineer | Belgrade, Serbia**  
-[LinkedIn](https://www.linkedin.com/in/jovan-madzic-12093b202/)
+Built by Jovan Madzic, Software Engineer in Belgrade · [LinkedIn](https://www.linkedin.com/in/jovan-madzic-12093b202/) · [GitHub](https://github.com/ckejoM)
